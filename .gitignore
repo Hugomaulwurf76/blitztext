@@ -1,0 +1,14 @@
+__pycache__/
+*.pyc
+*.pyo
+.venv/
+venv/
+*.egg-info/
+build/
+dist/
+.DS_Store
+Thumbs.db
+start.bat
+start.sh
+(3
+blitztext-cross.zip
