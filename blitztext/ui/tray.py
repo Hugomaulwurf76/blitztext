@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtGui import QIcon, QAction, QPixmap, QPainter, QColor, QFont
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject
 
+from .. import __version__
 from ..services.settings import load_settings, save_settings, AppSettings
 from ..services.paste import save_focus
 from ..workflow import WorkflowKind, WorkflowRunner, Phase
@@ -157,7 +158,7 @@ class BlitztextTrayApp(QSystemTrayIcon):
         self._active_runner: Optional[WorkflowRunner] = None
         self._hotkey_service = None
 
-        self.setToolTip("Blitztext")
+        self.setToolTip(f"Blitztext v{__version__}")
         self._build_menu()
         self._phase_signal.connect(self._on_phase_update)
         self._hk_start_signal.connect(self._hotkey_start)

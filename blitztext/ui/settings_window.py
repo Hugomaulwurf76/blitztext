@@ -12,6 +12,7 @@ from PyQt6.QtWidgets import (
 from PyQt6.QtCore import Qt, pyqtSignal
 from PyQt6.QtGui import QFont
 
+from .. import __version__
 from ..services.settings import (
     AppSettings, save_settings,
     STTProvider, LLMProvider, WorkflowModelConfig, LLM_MODEL_PRESETS,
@@ -27,7 +28,7 @@ class SettingsWindow(QWidget):
         super().__init__(parent)
         self.settings = settings
         self._setup_ui()
-        self.setWindowTitle("Blitztext – Einstellungen")
+        self.setWindowTitle(f"Blitztext – Einstellungen (v{__version__})")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowCloseButtonHint)
         self.setMinimumWidth(620)
         self.setMinimumHeight(720)
@@ -439,6 +440,13 @@ class SettingsWindow(QWidget):
         gf.addRow("STT-Modell:", self._groq_stt)
         gf.addRow("LLM-Modell:", self._groq_llm)
         layout.addWidget(groq_grp)
+
+        version_grp = QGroupBox("ℹ️  Über Blitztext")
+        vf = QFormLayout(version_grp)
+        version_label = QLabel(f"Version {__version__}")
+        version_label.setStyleSheet("font-weight: bold;")
+        vf.addRow("Aktuelle Version:", version_label)
+        layout.addWidget(version_grp)
 
         layout.addStretch()
         return w

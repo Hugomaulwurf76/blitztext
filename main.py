@@ -13,6 +13,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 
 from PyQt6.QtWidgets import QApplication
 from PyQt6.QtCore import Qt
+from blitztext import __version__
 from blitztext.ui.tray import BlitztextTrayApp
 
 
@@ -40,7 +41,7 @@ def main():
     app = QApplication(sys.argv)
     app.setApplicationName("Blitztext")
     app.setApplicationDisplayName("Blitztext")
-    app.setApplicationVersion("1.0.0")
+    app.setApplicationVersion(__version__)
     app.setOrganizationName("Blitztext")
     app.setDesktopFileName("blitztext")
     # Keep running even if all windows are closed (tray app)
