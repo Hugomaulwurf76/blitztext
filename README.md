@@ -98,7 +98,7 @@ Dann in den Einstellungen → Workflows → STT-Anbieter: "Lokal (faster-whisper
 
 1. App starten: `python main.py`
 2. Tray-Icon erscheint in der Taskleiste
-3. Rechtsklick → Einstellungen → API-Zugänge → OpenAI API Key eintragen
+3. Rechtsklick → Einstellungen → API-Zugänge → API Key eintragen
 4. Rechtsklick → Blitztext → Aufnahme starten
 
 ---
