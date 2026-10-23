@@ -11,10 +11,28 @@ import platform
 # Ensure the package is importable when running from root
 sys.path.insert(0, os.path.dirname(__file__))
 
-from PyQt6.QtWidgets import QApplication
+import traceback
+
+from PyQt6.QtWidgets import QApplication, QMessageBox
 from PyQt6.QtCore import Qt
 from blitztext import __version__
+from blitztext.services.settings import _config_path
 from blitztext.ui.tray import BlitztextTrayApp
+
+
+def _show_unhandled(exc_type, exc, tb) -> None:
+    """Zeigt unbehandelte Fehler als Fenster und schreibt sie in error.log,
+    statt dass das Programm ohne Meldung beendet wird."""
+    text = "".join(traceback.format_exception(exc_type, exc, tb))
+    try:
+        with open(_config_path().parent / "error.log", "a", encoding="utf-8") as f:
+            f.write(text + "\n")
+    except Exception:
+        pass
+    try:
+        QMessageBox.critical(None, "Blitztext – Fehler", text)
+    except Exception:
+        pass
 
 
 def _set_windows_app_id() -> None:
@@ -37,6 +55,8 @@ def main():
     QApplication.setHighDpiScaleFactorRoundingPolicy(
         Qt.HighDpiScaleFactorRoundingPolicy.PassThrough
     )
+
+    sys.excepthook = _show_unhandled
 
     app = QApplication(sys.argv)
     app.setApplicationName("Blitztext")
