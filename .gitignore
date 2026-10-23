@@ -12,3 +12,7 @@ start.bat
 start.sh
 (3
 blitztext-cross.zip
+
+# Build-Ordner des Entwicklers (nicht im Repo)
+BlitztextEXE/
+BlitztextDEB/
