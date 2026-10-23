@@ -14,7 +14,7 @@ sys.path.insert(0, os.path.dirname(__file__))
 import traceback
 
 from PyQt6.QtWidgets import QApplication, QMessageBox
-from PyQt6.QtCore import Qt
+from PyQt6.QtCore import Qt, QLockFile
 from blitztext import __version__
 from blitztext.services.settings import _config_path
 from blitztext.ui.tray import BlitztextTrayApp
@@ -48,6 +48,17 @@ def _set_windows_app_id() -> None:
         pass
 
 
+def _acquire_single_instance():
+    """Sperrt eine Datei im Konfigurationsordner. Gibt None zurueck, wenn schon eine Instanz laeuft.
+    QLockFile funktioniert unter Windows und Linux gleich und erkennt abgestuerzte Instanzen selbst."""
+    lock_dir = _config_path().parent
+    lock_dir.mkdir(parents=True, exist_ok=True)
+    lock = QLockFile(str(lock_dir / "instance.lock"))
+    if lock.tryLock(0):
+        return lock
+    return None
+
+
 def main():
     _set_windows_app_id()
 
@@ -59,6 +70,16 @@ def main():
     sys.excepthook = _show_unhandled
 
     app = QApplication(sys.argv)
+
+    lock = _acquire_single_instance()
+    if lock is None:
+        QMessageBox.information(
+            None, "Blitztext",
+            "Blitztext läuft bereits. Das Symbol findest du in der Taskleiste (Tray).",
+        )
+        sys.exit(0)
+    app.single_instance_lock = lock  # Referenz halten, sonst wird die Sperre freigegeben
+
     app.setApplicationName("Blitztext")
     app.setApplicationDisplayName("Blitztext")
     app.setApplicationVersion(__version__)

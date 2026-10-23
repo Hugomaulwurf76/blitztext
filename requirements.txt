@@ -22,5 +22,6 @@ pynput>=1.7.6
 # Optional: local Whisper transcription (no API key needed)
 # faster-whisper>=1.0.0
 
-# Optional: auto-paste on Windows
-# pyautogui>=0.9.54
+# Windows only: Auto-Paste (pyautogui) und Fensterfokus (pywin32)
+pyautogui>=0.9.54; sys_platform == "win32"
+pywin32>=306; sys_platform == "win32"

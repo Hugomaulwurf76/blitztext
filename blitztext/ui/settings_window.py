@@ -3,6 +3,7 @@ Settings window — tabbed UI.
 Tabs: API-Zugänge | Workflows | Hotkeys | Erweitert
 """
 
+import platform
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QTabWidget, QFormLayout, QComboBox, QCheckBox,
@@ -421,6 +422,10 @@ class SettingsWindow(QWidget):
         note.setWordWrap(True)
         layout.addWidget(note)
 
+        self._launch_at_login = QCheckBox("Mit Windows starten" if platform.system() == "Windows" else "Beim Anmelden starten")
+        self._launch_at_login.setChecked(self.settings.launch_at_login)
+        layout.addWidget(self._launch_at_login)
+
         # ─ Mikrofon-Auswahl ─
         mic_grp = QGroupBox("🎤  Mikrofon")
         mf = QFormLayout(mic_grp)
@@ -535,6 +540,18 @@ class SettingsWindow(QWidget):
 
         # Advanced
         s.auto_paste              = self._auto_paste.isChecked()
+
+        # Autostart: Registry-Eintrag setzen oder entfernen
+        s.launch_at_login = self._launch_at_login.isChecked()
+        try:
+            from ..services.autostart import set_enabled
+            set_enabled(s.launch_at_login)
+        except Exception as e:
+            from PyQt6.QtWidgets import QMessageBox
+            QMessageBox.warning(
+                self, "Blitztext",
+                f"Der Autostart-Eintrag konnte nicht geändert werden:\n{e}",
+            )
         s.audio_input_device      = self._mic_combo.currentData()
         s.groq_stt_model          = self._groq_stt.text().strip()
         s.groq_llm_model          = self._groq_llm.currentText().strip()

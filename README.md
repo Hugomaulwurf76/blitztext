@@ -48,11 +48,34 @@ Jeden Workflow kannst du **unabhängig** konfigurieren — z.B. Blitztext mit Gr
 ## Installation
 
 ### Voraussetzungen
-- Python 3.10 oder neuer (wird beim Installieren automatisch geprüft, versionsunabhängig)
+- Für das Windows-Setup und das Linux-Paket: nichts. Die Pakete bringen alles mit.
+- Für Entwicklung aus dem Quellcode: Python 3.10 oder neuer
 - Auf Linux: das Install-Skript richtet `portaudio19-dev`, `xdotool`/`wtype` etc. automatisch ein (per `sudo apt-get`)
-- Auf Windows: keine zusätzlichen System-Pakete nötig
 
-### Linux (Debian/Ubuntu)
+### Windows 11 (fertiges Setup)
+1. `BlitztextSetup-1.0.5.exe` aus den Releases herunterladen und ausführen.
+2. Windows fragt nach Administratorrechten. Die Installation erfolgt immer für alle Benutzer nach `C:\Program Files\Blitztext`.
+3. Der Assistent legt einen Startmenü-Eintrag an, optional auch eine Desktop-Verknüpfung.
+4. Autostart mit Windows: Einstellungen → Erweitert → „Mit Windows starten“.
+
+### Windows 11 (aus dem Quellcode)
+```cmd
+git clone https://github.com/Hugomaulwurf76/blitztext.git
+cd blitztext
+install_windows.bat
+start.bat
+```
+
+`install_windows.bat` installiert die Python-Pakete in das gefundene Python und erzeugt `start.bat`. Ist kein passendes Python vorhanden, verlinkt das Skript direkt zum Download.
+
+### Linux (Debian/Ubuntu, fertiges Paket)
+`blitztext_1.0.5_amd64.deb` aus den Releases herunterladen und installieren:
+```bash
+sudo apt install ./blitztext_1.0.5_amd64.deb
+```
+Danach im Anwendungsmenü „Blitztext“ starten. Deinstallation: `sudo apt remove blitztext`.
+
+### Linux (Debian/Ubuntu, aus dem Quellcode)
 ```bash
 git clone https://github.com/Hugomaulwurf76/blitztext.git
 cd blitztext
@@ -63,15 +86,7 @@ chmod +x install_linux.sh
 
 `install_linux.sh` erkennt automatisch ein passendes Python (≥3.10), legt ein eigenes `.venv` an, installiert alle System- und Python-Abhängigkeiten und erzeugt `start.sh`.
 
-### Windows 11
-```cmd
-git clone https://github.com/Hugomaulwurf76/blitztext.git
-cd blitztext
-install_windows.bat
-start.bat
-```
-
-`install_windows.bat` sucht automatisch ein passendes Python (≥3.10, egal welche genaue Version), installiert alle Python-Pakete und erzeugt `start.bat`. Ist kein passendes Python vorhanden, verlinkt das Skript direkt zum Download.
+Autostart beim Anmelden: Einstellungen → Erweitert → „Beim Anmelden starten“. Das legt `~/.config/autostart/blitztext.desktop` an und entfernt die Datei wieder, wenn du die Option ausschaltest.
 
 ### Lokale Transkription (kein API Key)
 ```bash
@@ -83,10 +98,14 @@ Dann in den Einstellungen → Workflows → STT-Anbieter: "Lokal (faster-whisper
 
 ## Erster Start
 
-1. App starten: `start.bat` (Windows) bzw. `./start.sh` (Linux) doppelklicken/ausführen
-2. Tray-Icon erscheint in der Taskleiste
+1. App starten: Startmenü bzw. Desktop-Verknüpfung (Windows), `./start.sh` (Linux)
+2. Tray-Icon erscheint in der Taskleiste. Windows 11 legt neue Tray-Icons oft im Überlauf (`^`) ab. Unter „Einstellungen → Personalisierung → Taskleiste → Andere Taskleistensymbole“ lässt es sich dauerhaft einblenden.
 3. Rechtsklick → Einstellungen → API-Zugänge → API Key eintragen
 4. Rechtsklick → Blitztext → Aufnahme starten
+
+Unter Linux öffnet ein Linksklick auf das Tray-Icon kein Popup (Wayland-Einschränkung). Dort nutzt du den Rechtsklick.
+
+Die App läuft nur einmal gleichzeitig. Ein zweiter Start zeigt einen Hinweis und beendet sich.
 
 ---
 
@@ -104,8 +123,9 @@ API Keys werden im System-Keyring gespeichert (sicher, nicht im Klartext) — ni
 
 ```
 main.py                         Einstiegspunkt
-install_windows.bat             Automatisches Setup für Windows
+install_windows.bat             Quellcode-Setup für Windows
 install_linux.sh                Automatisches Setup für Linux
+requirements.txt                Python-Abhängigkeiten (pyautogui/pywin32 nur unter Windows)
 blitztext/
   workflow.py                   Kernlogik aller 4 Workflows
   services/
@@ -115,6 +135,7 @@ blitztext/
     llm.py                      LLM-Anbieter (Groq/OpenAI/Claude/Ollama/custom)
     hotkeys.py                  Globale Hotkeys (pynput)
     paste.py                    Clipboard + Auto-Paste
+    autostart.py                Autostart (Windows: Registry, Linux: XDG-Autostart)
   ui/
     tray.py                     System-Tray + Menü
     workflow_window.py          Aufnahme-UI mit Waveform
