@@ -9,13 +9,13 @@ import threading
 from typing import Optional
 
 from PyQt6.QtWidgets import (
-    QApplication, QSystemTrayIcon, QMenu,
+    QApplication, QSystemTrayIcon, QMenu, QMessageBox,
 )
 from PyQt6.QtGui import QIcon, QAction, QPixmap, QPainter, QColor, QFont
 from PyQt6.QtCore import Qt, QThread, pyqtSignal, QObject
 
 from .. import __version__
-from ..services.settings import load_settings, save_settings, AppSettings
+from ..services.settings import load_settings, save_settings, AppSettings, get_load_error
 from ..services.paste import save_focus
 from ..workflow import WorkflowKind, WorkflowRunner, Phase
 from .workflow_window import WorkflowWindow
@@ -152,6 +152,17 @@ class BlitztextTrayApp(QSystemTrayIcon):
         super().__init__(_make_icon(), app)
         self.app = app
         self.settings: AppSettings = load_settings()
+        load_error = get_load_error()
+        if load_error:
+            QMessageBox.warning(
+                None,
+                "Blitztext – Einstellungen nicht lesbar",
+                "Die Einstellungsdatei konnte nicht gelesen werden:\n\n"
+                f"{load_error}\n\n"
+                "Blitztext startet mit den Standardwerten. settings.json wird jetzt mit "
+                "den Standardwerten neu geschrieben. Die kaputte Datei liegt im oben "
+                "genannten Sicherungspfad.",
+            )
         self._async = AsyncRunner()
 
         self._workflow_windows: dict = {}

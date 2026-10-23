@@ -5,6 +5,7 @@ Supports multiple STT and LLM providers; defaults are Groq Whisper + Groq LLM.
 
 import json
 import os
+import shutil
 from dataclasses import dataclass, field, asdict
 from pathlib import Path
 from typing import Optional
@@ -200,7 +201,17 @@ def _nested_update(target: dict, source: dict) -> dict:
     return target
 
 
+_LOAD_ERROR: Optional[str] = None
+
+
+def get_load_error() -> Optional[str]:
+    """Gibt die Fehlermeldung zurück, wenn die Einstellungen beim Laden nicht lesbar waren."""
+    return _LOAD_ERROR
+
+
 def load_settings() -> AppSettings:
+    global _LOAD_ERROR
+    _LOAD_ERROR = None
     path = _config_path()
     defaults = asdict(AppSettings())
     if path.exists():
@@ -209,8 +220,15 @@ def load_settings() -> AppSettings:
                 saved = json.load(f)
             merged = _nested_update(defaults, saved)
             return _dict_to_settings(merged)
-        except Exception:
-            pass
+        except Exception as e:
+            # Kaputte Datei sichern, bevor Blitztext sie mit Standardwerten überschreibt
+            backup = path.with_name("settings.defekt.json")
+            try:
+                shutil.copy2(path, backup)
+                backup_info = f"Gesichert unter: {backup}"
+            except OSError as copy_err:
+                backup_info = f"Sicherung fehlgeschlagen: {copy_err}"
+            _LOAD_ERROR = f"{path}\n{type(e).__name__}: {e}\n{backup_info}"
     return AppSettings()
 
 

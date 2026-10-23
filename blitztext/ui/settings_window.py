@@ -10,7 +10,7 @@ from PyQt6.QtWidgets import (
     QSpinBox, QMessageBox,
 )
 from PyQt6.QtCore import Qt, pyqtSignal
-from PyQt6.QtGui import QFont
+from PyQt6.QtGui import QFont, QKeySequence
 
 from .. import __version__
 from ..services.settings import (
@@ -19,6 +19,28 @@ from ..services.settings import (
     get_api_key, set_api_key, masked,
     KEY_OPENAI, KEY_GROQ, KEY_ANTHROPIC, KEY_ASSEMBLYAI, KEY_CUSTOM_STT, KEY_CUSTOM_LLM,
 )
+
+
+class HotkeyEdit(QLineEdit):
+    """Nimmt die gedrückte Tastenkombination auf, z. B. 'ctrl+shift+g'."""
+
+    _MODIFIER_KEYS = {
+        Qt.Key.Key_Control, Qt.Key.Key_Shift, Qt.Key.Key_Alt,
+        Qt.Key.Key_Meta, Qt.Key.Key_AltGr,
+    }
+
+    def keyPressEvent(self, event):
+        key = event.key()
+        if key in self._MODIFIER_KEYS:
+            return  # nur eine Modifier-Taste: noch nichts übernehmen
+        if key in (Qt.Key.Key_Backspace, Qt.Key.Key_Delete) \
+                and event.modifiers() == Qt.KeyboardModifier.NoModifier:
+            self.clear()
+            return
+        combo = QKeySequence(event.keyCombination()).toString(
+            QKeySequence.SequenceFormat.PortableText)
+        if combo:
+            self.setText(combo.lower())
 
 
 class SettingsWindow(QWidget):
@@ -356,10 +378,10 @@ class SettingsWindow(QWidget):
             form.addRow("Modus:", mode_combo)
             return box
 
-        self._hk_transcription    = QLineEdit(self.settings.hotkeys.transcription)
-        self._hk_text_improvement = QLineEdit(self.settings.hotkeys.text_improvement)
-        self._hk_dampf_ablassen   = QLineEdit(self.settings.hotkeys.dampf_ablassen)
-        self._hk_emoji_text       = QLineEdit(self.settings.hotkeys.emoji_text)
+        self._hk_transcription    = HotkeyEdit(self.settings.hotkeys.transcription)
+        self._hk_text_improvement = HotkeyEdit(self.settings.hotkeys.text_improvement)
+        self._hk_dampf_ablassen   = HotkeyEdit(self.settings.hotkeys.dampf_ablassen)
+        self._hk_emoji_text       = HotkeyEdit(self.settings.hotkeys.emoji_text)
 
         self._hk_transcription_mode    = _mode_combo(self.settings.hotkeys.transcription_mode)
         self._hk_text_improvement_mode = _mode_combo(self.settings.hotkeys.text_improvement_mode)
