@@ -4,13 +4,14 @@ Tabs: API-Zugänge | Workflows | Hotkeys | Erweitert
 """
 
 import platform
+import threading
 from PyQt6.QtWidgets import (
     QWidget, QVBoxLayout, QHBoxLayout, QLabel, QLineEdit,
     QPushButton, QTabWidget, QFormLayout, QComboBox, QCheckBox,
     QTextEdit, QGroupBox, QScrollArea, QSizePolicy, QFrame,
     QSpinBox, QMessageBox,
 )
-from PyQt6.QtCore import Qt, pyqtSignal
+from PyQt6.QtCore import Qt, QObject, pyqtSignal
 from PyQt6.QtGui import QFont, QKeySequence
 
 from .. import __version__
@@ -19,6 +20,7 @@ from ..services.settings import (
     STTProvider, LLMProvider, WorkflowModelConfig, LLM_MODEL_PRESETS,
     get_api_key, set_api_key, masked,
     KEY_OPENAI, KEY_GROQ, KEY_ANTHROPIC, KEY_ASSEMBLYAI, KEY_CUSTOM_STT, KEY_CUSTOM_LLM,
+    KEY_OPENROUTER, fetch_openrouter_models, fetch_openrouter_transcription_models,
 )
 
 
@@ -44,12 +46,24 @@ class HotkeyEdit(QLineEdit):
             self.setText(combo.lower())
 
 
+class _ModelLoader(QObject):
+    loaded = pyqtSignal(list)
+    transcription_loaded = pyqtSignal(list)
+
+
 class SettingsWindow(QWidget):
     settings_saved = pyqtSignal(object)  # emits AppSettings
 
     def __init__(self, settings: AppSettings, parent=None):
         super().__init__(parent)
         self.settings = settings
+        self._or_loader = _ModelLoader()
+        self._or_loader.loaded.connect(self._on_openrouter_models)
+        self._or_loading = False
+        self._llm_model_combos = []  # (Modell-Combo, zugehörige Anbieter-Combo)
+        self._stt_model_combos = []  # (STT-Modell-Combo, zugehörige Anbieter-Combo)
+        self._or_stt_models = []
+        self._or_loader.transcription_loaded.connect(self._on_openrouter_transcription_models)
         self._setup_ui()
         self.setWindowTitle(f"Blitztext – Einstellungen (v{__version__})")
         self.setWindowFlags(Qt.WindowType.Window | Qt.WindowType.WindowCloseButtonHint)
@@ -196,6 +210,23 @@ class SettingsWindow(QWidget):
         self._custom_llm_key.setObjectName(f"key_{KEY_CUSTOM_LLM}")
         cu.addRow("LLM-Key (optional):", self._custom_llm_key)
 
+        # OpenRouter: Key + frei wählbares Modell aus der Live-Liste
+        layout.addWidget(_key_row("OpenRouter API Key", KEY_OPENROUTER, "sk-or-v1-…"))
+
+        or_model_grp = QGroupBox("OpenRouter – Modell")
+        om = QFormLayout(or_model_grp)
+        self._or_model = QComboBox()
+        self._or_model.setEditable(True)
+        self._or_model.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        if self.settings.openrouter_llm_model:
+            self._or_model.addItem(self.settings.openrouter_llm_model)
+        self._or_status = QLabel("Modelle werden geladen …")
+        self._or_status.setStyleSheet("color: #888; font-size: 11px;")
+        self._or_model.currentTextChanged.connect(self._refresh_openrouter_workflow_combos)
+        om.addRow("Modell:", self._or_model)
+        om.addRow("", self._or_status)
+        layout.addWidget(or_model_grp)
+
         layout.addWidget(custom_grp)
 
         layout.addStretch()
@@ -229,7 +260,7 @@ class SettingsWindow(QWidget):
         tr_grp = QGroupBox("🎙  Blitztext — Transkription")
         tr = QFormLayout(tr_grp)
         self._tr_stt_provider = self._stt_combo(self.settings.transcription_model.stt_provider)
-        self._tr_stt_model    = QLineEdit(self.settings.transcription_model.stt_model)
+        self._tr_stt_model    = self._stt_model_combo(self._tr_stt_provider, self.settings.transcription_model.stt_model)
         self._tr_language     = QLineEdit(self.settings.transcription_model.language)
         tr.addRow("STT-Anbieter:", self._tr_stt_provider)
         tr.addRow("STT-Modell:", self._tr_stt_model)
@@ -240,7 +271,7 @@ class SettingsWindow(QWidget):
         ti_grp = QGroupBox("✨  Blitztext+ — Text verbessern")
         ti = QFormLayout(ti_grp)
         self._ti_stt_provider = self._stt_combo(self.settings.text_improvement.model.stt_provider)
-        self._ti_stt_model    = QLineEdit(self.settings.text_improvement.model.stt_model)
+        self._ti_stt_model    = self._stt_model_combo(self._ti_stt_provider, self.settings.text_improvement.model.stt_model)
         self._ti_llm_provider = self._llm_combo(self.settings.text_improvement.model.llm_provider)
         self._ti_llm_model    = self._llm_model_combo(
             self._ti_llm_provider, self.settings.text_improvement.model.llm_model
@@ -268,7 +299,7 @@ class SettingsWindow(QWidget):
         da_grp = QGroupBox("🔥  Blitztext $%&! — Frust umformulieren")
         da = QFormLayout(da_grp)
         self._da_stt_provider = self._stt_combo(self.settings.dampf_ablassen.model.stt_provider)
-        self._da_stt_model    = QLineEdit(self.settings.dampf_ablassen.model.stt_model)
+        self._da_stt_model    = self._stt_model_combo(self._da_stt_provider, self.settings.dampf_ablassen.model.stt_model)
         self._da_llm_provider = self._llm_combo(self.settings.dampf_ablassen.model.llm_provider)
         self._da_llm_model    = self._llm_model_combo(
             self._da_llm_provider, self.settings.dampf_ablassen.model.llm_model
@@ -286,7 +317,7 @@ class SettingsWindow(QWidget):
         em_grp = QGroupBox("😊  Blitztext :) — Emojis")
         em = QFormLayout(em_grp)
         self._em_stt_provider = self._stt_combo(self.settings.emoji.model.stt_provider)
-        self._em_stt_model    = QLineEdit(self.settings.emoji.model.stt_model)
+        self._em_stt_model    = self._stt_model_combo(self._em_stt_provider, self.settings.emoji.model.stt_model)
         self._em_llm_provider = self._llm_combo(self.settings.emoji.model.llm_provider)
         self._em_llm_model    = self._llm_model_combo(
             self._em_llm_provider, self.settings.emoji.model.llm_model
@@ -307,6 +338,36 @@ class SettingsWindow(QWidget):
         layout.addStretch()
         scroll.setWidget(w)
         return scroll
+
+    def _stt_model_combo(self, provider_combo: QComboBox, current_model: str) -> QComboBox:
+        """Editierbares STT-Modellfeld. Bei OpenRouter kommt die Liste von der API."""
+        cb = QComboBox()
+        cb.setEditable(True)
+        cb.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self._stt_model_combos.append((cb, provider_combo))
+        self._fill_stt_models(cb, provider_combo.currentData(), current_model)
+        provider_combo.currentIndexChanged.connect(
+            lambda: self._fill_stt_models(cb, provider_combo.currentData(), cb.currentText())
+        )
+        return cb
+
+    def _fill_stt_models(self, cb: QComboBox, provider: str, keep_text: str) -> None:
+        cb.blockSignals(True)
+        cb.clear()
+        if provider == STTProvider.OPENROUTER:
+            cb.addItems(self._or_stt_models)
+        elif provider == STTProvider.OPENAI:
+            cb.addItem("whisper-1")  # Standardmodell aus services/stt.py
+        elif provider == STTProvider.GROQ:
+            cb.addItem("whisper-large-v3-turbo")  # Standardmodell aus services/stt.py
+        cb.setEditText(keep_text)
+        cb.blockSignals(False)
+
+    def _on_openrouter_transcription_models(self, ids: list) -> None:
+        self._or_stt_models = ids
+        for cb, provider_combo in self._stt_model_combos:
+            if provider_combo.currentData() == STTProvider.OPENROUTER:
+                self._fill_stt_models(cb, STTProvider.OPENROUTER, cb.currentText())
 
     def _stt_combo(self, current: str) -> QComboBox:
         cb = QComboBox()
@@ -331,6 +392,7 @@ class SettingsWindow(QWidget):
         cb = QComboBox()
         cb.setEditable(True)
         cb.setInsertPolicy(QComboBox.InsertPolicy.NoInsert)
+        self._llm_model_combos.append((cb, provider_combo))
         self._fill_llm_models(cb, provider_combo.currentData(), current_model)
         provider_combo.currentIndexChanged.connect(
             lambda: self._fill_llm_models(cb, provider_combo.currentData(), cb.currentText())
@@ -340,9 +402,24 @@ class SettingsWindow(QWidget):
     def _fill_llm_models(self, cb: QComboBox, provider: str, keep_text: str) -> None:
         cb.blockSignals(True)
         cb.clear()
-        cb.addItems(LLM_MODEL_PRESETS.get(provider, []))
-        cb.setEditText(keep_text)
+        if provider == LLMProvider.OPENROUTER:
+            # Modell kommt aus dem Block "OpenRouter – Modell" (API-Zugänge)
+            cb.addItem(self._or_model.currentText().strip())
+            cb.setEnabled(False)
+            cb.setToolTip("Wird im Tab API-Zugänge unter 'OpenRouter – Modell' gewählt.")
+        else:
+            if not cb.isEnabled():
+                keep_text = ""  # altes OpenRouter-Modell nicht in andere Anbieter übernehmen
+            cb.setEnabled(True)
+            cb.setToolTip("")
+            cb.addItems(LLM_MODEL_PRESETS.get(provider, []))
+            cb.setEditText(keep_text)
         cb.blockSignals(False)
+
+    def _refresh_openrouter_workflow_combos(self, *_) -> None:
+        for cb, provider_combo in self._llm_model_combos:
+            if provider_combo.currentData() == LLMProvider.OPENROUTER:
+                self._fill_llm_models(cb, LLMProvider.OPENROUTER, "")
 
     # ── Tab: Hotkeys ─────────────────────────────────────────────────────────
 
@@ -478,13 +555,46 @@ class SettingsWindow(QWidget):
         layout.addStretch()
         return w
 
+    # ── OpenRouter: Modellliste beim Öffnen laden ────────────────────────────
+
+    def showEvent(self, event):
+        super().showEvent(event)
+        self._start_openrouter_load()
+
+    def _start_openrouter_load(self) -> None:
+        if self._or_loading:
+            return
+        self._or_loading = True
+        self._or_status.setText("Modelle werden geladen …")
+        threading.Thread(
+            target=lambda: self._or_loader.loaded.emit(fetch_openrouter_models()),
+            daemon=True,
+        ).start()
+        threading.Thread(
+            target=lambda: self._or_loader.transcription_loaded.emit(fetch_openrouter_transcription_models()),
+            daemon=True,
+        ).start()
+
+    def _on_openrouter_models(self, ids: list) -> None:
+        self._or_loading = False
+        current = self._or_model.currentText().strip()
+        self._or_model.blockSignals(True)
+        self._or_model.clear()
+        self._or_model.addItems(ids)
+        self._or_model.setEditText(current)
+        self._or_model.blockSignals(False)
+        if ids:
+            self._or_status.setText(f"{len(ids)} Modelle geladen. Auswahl oder eigene ID eintragen.")
+        else:
+            self._or_status.setText("Keine Modellliste (offline oder kein Key). Modell-ID von Hand eintragen.")
+
     # ── Save ─────────────────────────────────────────────────────────────────
 
     def _save(self) -> None:
         s = self.settings
 
         # Save API keys from fields
-        for key_name in [KEY_OPENAI, KEY_GROQ, KEY_ANTHROPIC, KEY_ASSEMBLYAI, KEY_CUSTOM_STT, KEY_CUSTOM_LLM]:
+        for key_name in [KEY_OPENAI, KEY_GROQ, KEY_ANTHROPIC, KEY_ASSEMBLYAI, KEY_CUSTOM_STT, KEY_CUSTOM_LLM, KEY_OPENROUTER]:
             field = self.findChild(QLineEdit, f"key_{key_name}")
             if field:
                 val = field.text().strip()
@@ -499,14 +609,17 @@ class SettingsWindow(QWidget):
         s.custom_stt_url = self._custom_stt_url.text().strip()
         s.custom_llm_url = self._custom_llm_url.text().strip()
 
+        # OpenRouter
+        s.openrouter_llm_model = self._or_model.currentText().strip()
+
         # Transcription
         s.transcription_model.stt_provider = self._tr_stt_provider.currentData()
-        s.transcription_model.stt_model    = self._tr_stt_model.text().strip()
+        s.transcription_model.stt_model    = self._tr_stt_model.currentText().strip()
         s.transcription_model.language     = self._tr_language.text().strip()
 
         # Blitztext+
         s.text_improvement.model.stt_provider = self._ti_stt_provider.currentData()
-        s.text_improvement.model.stt_model    = self._ti_stt_model.text().strip()
+        s.text_improvement.model.stt_model    = self._ti_stt_model.currentText().strip()
         s.text_improvement.model.llm_provider = self._ti_llm_provider.currentData()
         s.text_improvement.model.llm_model    = self._ti_llm_model.currentText().strip()
         s.text_improvement.tone               = self._ti_tone.currentData()
@@ -515,14 +628,14 @@ class SettingsWindow(QWidget):
 
         # Dampf ablassen
         s.dampf_ablassen.model.stt_provider = self._da_stt_provider.currentData()
-        s.dampf_ablassen.model.stt_model    = self._da_stt_model.text().strip()
+        s.dampf_ablassen.model.stt_model    = self._da_stt_model.currentText().strip()
         s.dampf_ablassen.model.llm_provider = self._da_llm_provider.currentData()
         s.dampf_ablassen.model.llm_model    = self._da_llm_model.currentText().strip()
         s.dampf_ablassen.system_prompt      = self._da_prompt.toPlainText().strip()
 
         # Emoji
         s.emoji.model.stt_provider = self._em_stt_provider.currentData()
-        s.emoji.model.stt_model    = self._em_stt_model.text().strip()
+        s.emoji.model.stt_model    = self._em_stt_model.currentText().strip()
         s.emoji.model.llm_provider = self._em_llm_provider.currentData()
         s.emoji.model.llm_model    = self._em_llm_model.currentText().strip()
         s.emoji.density            = self._em_density.currentData()

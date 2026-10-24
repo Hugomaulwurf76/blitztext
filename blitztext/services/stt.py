@@ -8,7 +8,7 @@ from typing import Optional
 
 from .settings import (
     STTProvider, WorkflowModelConfig,
-    get_api_key, KEY_OPENAI, KEY_GROQ, KEY_ASSEMBLYAI, KEY_CUSTOM_STT,
+    get_api_key, KEY_OPENAI, KEY_GROQ, KEY_ASSEMBLYAI, KEY_CUSTOM_STT, KEY_OPENROUTER,
 )
 
 
@@ -28,6 +28,8 @@ async def transcribe(audio_path: Path, cfg: WorkflowModelConfig) -> str:
         return await _transcribe_assemblyai(audio_path, cfg)
     elif provider == STTProvider.LOCAL:
         return await _transcribe_local(audio_path, cfg)
+    elif provider == STTProvider.OPENROUTER:
+        return await _transcribe_openrouter(audio_path, cfg)
     elif provider == STTProvider.CUSTOM:
         return await _transcribe_custom(audio_path, cfg)
     else:
@@ -186,6 +188,47 @@ async def _transcribe_local(audio_path: Path, cfg: WorkflowModelConfig) -> str:
     loop = asyncio.get_event_loop()
     with concurrent.futures.ThreadPoolExecutor() as pool:
         return await loop.run_in_executor(pool, _run)
+
+
+# ── OpenRouter ────────────────────────────────────────────────────────────────
+
+OPENROUTER_STT_URL = "https://openrouter.ai/api/v1/audio/transcriptions"
+
+
+async def _transcribe_openrouter(audio_path: Path, cfg: WorkflowModelConfig) -> str:
+    api_key = get_api_key(KEY_OPENROUTER)
+    if not api_key:
+        raise STTError("OpenRouter API Key fehlt. Bitte in den Einstellungen hinterlegen.")
+
+    try:
+        import httpx
+    except ImportError:
+        raise STTError("httpx nicht installiert.")
+
+    model = (cfg.stt_model or "").strip() or "openai/whisper-1"
+    lang  = cfg.language or ""
+
+    async with httpx.AsyncClient(timeout=60) as client:
+        with open(audio_path, "rb") as f:
+            files = {"file": (audio_path.name, f, "audio/wav")}
+            data  = {"model": model}
+            if lang:
+                data["language"] = lang
+
+            resp = await client.post(
+                OPENROUTER_STT_URL,
+                headers={"Authorization": f"Bearer {api_key}"},
+                files=files,
+                data=data,
+            )
+
+    if resp.status_code != 200:
+        _raise_api_error("OpenRouter", resp)
+
+    try:
+        return resp.json()["text"].strip()
+    except (KeyError, ValueError):
+        raise STTError("Keine Transkription von OpenRouter erhalten.")
 
 
 # ── Custom endpoint ───────────────────────────────────────────────────────────

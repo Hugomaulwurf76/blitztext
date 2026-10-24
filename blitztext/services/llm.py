@@ -1,12 +1,12 @@
 """
 LLM service for text rewriting workflows.
-Supports: Groq, OpenAI, Anthropic (Claude), Ollama, custom endpoint.
+Supports: Groq, OpenAI, Anthropic (Claude), Ollama, OpenRouter, custom endpoint.
 """
 
 from typing import Optional
 from .settings import (
     LLMProvider, WorkflowModelConfig,
-    get_api_key, KEY_OPENAI, KEY_GROQ, KEY_ANTHROPIC, KEY_CUSTOM_LLM,
+    get_api_key, KEY_OPENAI, KEY_GROQ, KEY_ANTHROPIC, KEY_CUSTOM_LLM, KEY_OPENROUTER,
     TextImprovementSettings, DampfAblassenSettings, EmojiSettings,
 )
 
@@ -48,6 +48,8 @@ async def _complete(
         return await _anthropic(text, system_prompt, cfg, temperature)
     elif provider == LLMProvider.OLLAMA:
         return await _ollama(text, system_prompt, cfg, temperature)
+    elif provider == LLMProvider.OPENROUTER:
+        return await _openrouter(text, system_prompt, cfg, temperature)
     elif provider == LLMProvider.CUSTOM:
         return await _custom(text, system_prompt, cfg, temperature)
     else:
@@ -142,6 +144,28 @@ async def _ollama(text, system, cfg: WorkflowModelConfig, temp: float) -> str:
         url=f"{base}/v1/chat/completions",
         api_key=None,
         model=model, text=text, system=system, temp=temp,
+    )
+
+
+# ── OpenRouter ────────────────────────────────────────────────────────────────
+
+OPENROUTER_CHAT_URL = "https://openrouter.ai/api/v1/chat/completions"
+
+
+async def _openrouter(text, system, cfg: WorkflowModelConfig, temp: float) -> str:
+    api_key = get_api_key(KEY_OPENROUTER)
+    if not api_key:
+        raise LLMError("OpenRouter API Key fehlt. Bitte in den Einstellungen hinterlegen.")
+    # Variante B: ein einziges OpenRouter-Modell, das im Block "OpenRouter – Modell" gewählt wird.
+    from .settings import load_settings
+    model = (load_settings().openrouter_llm_model or "").strip()
+    if not model:
+        raise LLMError("Kein OpenRouter-Modell gewählt. Bitte im Tab API-Zugänge ein Modell auswählen.")
+    return await _call_openai_compatible(
+        url=OPENROUTER_CHAT_URL,
+        api_key=api_key,
+        model=model,
+        text=text, system=system, temp=temp,
     )
 
 

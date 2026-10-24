@@ -21,6 +21,7 @@ KEY_ANTHROPIC   = "anthropic_api_key"
 KEY_ASSEMBLYAI  = "assemblyai_api_key"
 KEY_CUSTOM_STT  = "custom_stt_api_key"
 KEY_CUSTOM_LLM  = "custom_llm_api_key"
+KEY_OPENROUTER  = "openrouter_api_key"
 
 
 def _config_path() -> Path:
@@ -40,15 +41,17 @@ class STTProvider:
     OPENAI     = "openai_whisper"
     ASSEMBLYAI = "assemblyai"
     LOCAL      = "local_whisper"
+    OPENROUTER = "openrouter_whisper"
     CUSTOM     = "custom"
 
-    ALL = [GROQ, OPENAI, ASSEMBLYAI, LOCAL, CUSTOM]
+    ALL = [GROQ, OPENAI, ASSEMBLYAI, LOCAL, OPENROUTER, CUSTOM]
 
     DISPLAY = {
         GROQ:       "Groq Whisper (kostenlos, Standard)",
         OPENAI:     "OpenAI Whisper API",
         ASSEMBLYAI: "AssemblyAI",
         LOCAL:      "Lokal (faster-whisper)",
+        OPENROUTER: "OpenRouter (Whisper-Modelle)",
         CUSTOM:     "Eigener Endpunkt",
     }
 
@@ -58,16 +61,18 @@ class LLMProvider:
     OPENAI    = "openai"
     ANTHROPIC = "anthropic"
     OLLAMA    = "ollama"
+    OPENROUTER = "openrouter"
     CUSTOM    = "custom"
 
-    ALL = [GROQ, OPENAI, ANTHROPIC, OLLAMA, CUSTOM]
+    ALL = [GROQ, OPENAI, ANTHROPIC, OLLAMA, OPENROUTER, CUSTOM]
 
     DISPLAY = {
-        GROQ:      "Groq (kostenlos, Standard)",
-        OPENAI:    "OpenAI",
-        ANTHROPIC: "Claude (Anthropic)",
-        OLLAMA:    "Ollama (lokal)",
-        CUSTOM:    "Eigener Endpunkt",
+        GROQ:       "Groq (kostenlos, Standard)",
+        OPENAI:     "OpenAI",
+        ANTHROPIC:  "Claude (Anthropic)",
+        OLLAMA:     "Ollama (lokal)",
+        OPENROUTER: "OpenRouter (alle Modelle)",
+        CUSTOM:     "Eigener Endpunkt",
     }
 
 
@@ -109,6 +114,9 @@ LLM_MODEL_PRESETS = {
         "gemma4",         # aktuelle Gemma-Generation, Vision + Tools
         "mistral-nemo",   # Nachfolger von mistral 7b
     ],
+    # OpenRouter: Modellliste wird beim Öffnen der Einstellungen live von der API geladen.
+    # Hier steht absichtlich nichts, damit keine veralteten Modell-IDs fest einprogrammiert sind.
+    LLMProvider.OPENROUTER: [],
     LLMProvider.CUSTOM: [],
 }
 
@@ -185,6 +193,7 @@ class AppSettings:
     anthropic_model:     str                     = "claude-sonnet-5"
     ollama_base_url:     str                     = "http://localhost:11434"
     ollama_llm_model:    str                     = "llama3.2"
+    openrouter_llm_model: str                    = ""
     custom_stt_url:      str                     = ""
     custom_llm_url:      str                     = ""
     audio_input_device:  Optional[int]           = None   # None = System-Default
@@ -286,7 +295,7 @@ def _dict_to_settings(d: dict) -> AppSettings:
         )
     for attr in ("launch_at_login", "auto_paste", "has_seen_onboarding",
                  "groq_stt_model", "groq_llm_model", "anthropic_model",
-                 "ollama_base_url", "ollama_llm_model",
+                 "ollama_base_url", "ollama_llm_model", "openrouter_llm_model",
                  "custom_stt_url", "custom_llm_url", "audio_input_device"):
         if attr in d:
             setattr(s, attr, d[attr])
@@ -321,3 +330,68 @@ def masked(key: Optional[str]) -> str:
     if len(key) <= 8:
         return "••••••••"
     return key[:4] + "•" * (len(key) - 8) + key[-4:]
+
+
+# ── OpenRouter: Modellliste live laden ───────────────────────────────────────
+
+OPENROUTER_MODELS_URL = "https://openrouter.ai/api/v1/models"
+
+
+def fetch_openrouter_models() -> list:
+    """Holt alle Modell-IDs von OpenRouter (sortiert).
+
+    Liefert bei jedem Fehler (kein Internet, API-Fehler, httpx fehlt) eine leere
+    Liste, damit die Oberfläche ohne Modellvorschläge weiter funktioniert.
+    Der Key wird mitgeschickt, falls einer hinterlegt ist.
+    """
+    try:
+        import httpx
+    except ImportError:
+        return []
+
+    headers = {}
+    api_key = get_api_key(KEY_OPENROUTER)
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        resp = httpx.get(OPENROUTER_MODELS_URL, headers=headers, timeout=10)
+        resp.raise_for_status()
+        items = resp.json().get("data", [])
+        ids = {m["id"] for m in items if isinstance(m, dict) and m.get("id")}
+    except Exception:
+        return []
+
+    return sorted(ids)
+
+
+def fetch_openrouter_transcription_models() -> list:
+    """Holt alle Speech-to-Text-Modelle von OpenRouter (sortiert).
+
+    Nutzt den Filter output_modalities=transcription am Modell-Endpunkt.
+    Liefert bei jedem Fehler eine leere Liste.
+    """
+    try:
+        import httpx
+    except ImportError:
+        return []
+
+    headers = {}
+    api_key = get_api_key(KEY_OPENROUTER)
+    if api_key:
+        headers["Authorization"] = f"Bearer {api_key}"
+
+    try:
+        resp = httpx.get(
+            OPENROUTER_MODELS_URL,
+            params={"output_modalities": "transcription"},
+            headers=headers,
+            timeout=10,
+        )
+        resp.raise_for_status()
+        items = resp.json().get("data", [])
+        ids = {m["id"] for m in items if isinstance(m, dict) and m.get("id")}
+    except Exception:
+        return []
+
+    return sorted(ids)
