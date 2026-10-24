@@ -48,12 +48,12 @@ Jeden Workflow kannst du **unabhängig** konfigurieren — z.B. Blitztext mit Gr
 ## Installation
 
 ### Voraussetzungen
-- Für das Windows-Setup und das Linux-Paket: nichts. Die Pakete bringen alles mit.
+- Für das Setup unter Windows: nichts. Das Setup bringt alles mit.
 - Für Entwicklung aus dem Quellcode: Python 3.10 oder neuer
 - Auf Linux: das Install-Skript richtet `portaudio19-dev`, `xdotool`/`wtype` etc. automatisch ein (per `sudo apt-get`)
 
 ### Windows 11 (fertiges Setup)
-1. `BlitztextSetup-1.0.5.exe` aus den Releases herunterladen und ausführen.
+1. `BlitztextSetup-1.0.6.exe` aus den Releases herunterladen und ausführen.
 2. Windows fragt nach Administratorrechten. Die Installation erfolgt immer für alle Benutzer nach `C:\Program Files\Blitztext`.
 3. Der Assistent legt einen Startmenü-Eintrag an, optional auch eine Desktop-Verknüpfung.
 4. Autostart mit Windows: Einstellungen → Erweitert → „Mit Windows starten“.
@@ -69,13 +69,18 @@ start.bat
 `install_windows.bat` installiert die Python-Pakete in das gefundene Python und erzeugt `start.bat`. Ist kein passendes Python vorhanden, verlinkt das Skript direkt zum Download.
 
 ### Linux (Debian/Ubuntu, fertiges Paket)
-`blitztext_1.0.5_amd64.deb` aus den Releases herunterladen und installieren:
+`blitztext_1.0.6_amd64.deb` aus den Releases herunterladen und installieren:
 ```bash
-sudo apt install ./blitztext_1.0.5_amd64.deb
+sudo apt install ./blitztext_1.0.6_amd64.deb
 ```
 Danach im Anwendungsmenü „Blitztext“ starten. Deinstallation: `sudo apt remove blitztext`.
 
-### Linux (Debian/Ubuntu, aus dem Quellcode)
+### Windows-Setup selbst bauen (Entwickler)
+Im Ordner `BlitztextEXE`:
+1. `build_exe.bat` ausführen. Es installiert die Build-Pakete, erzeugt `Blitztext.ico` aus dem Tray-Icon und baut `dist\Blitztext\Blitztext.exe` mit PyInstaller.
+2. `Blitztext.iss` mit dem [Inno Setup Compiler](https://jrsoftware.org/isdl.php) öffnen und kompilieren. Das Ergebnis liegt in `output\BlitztextSetup-1.0.6.exe`.
+
+### Linux (Debian/Ubuntu)
 ```bash
 git clone https://github.com/Hugomaulwurf76/blitztext.git
 cd blitztext
@@ -105,8 +110,6 @@ Dann in den Einstellungen → Workflows → STT-Anbieter: "Lokal (faster-whisper
 
 Unter Linux öffnet ein Linksklick auf das Tray-Icon kein Popup (Wayland-Einschränkung). Dort nutzt du den Rechtsklick.
 
-Die App läuft nur einmal gleichzeitig. Ein zweiter Start zeigt einen Hinweis und beendet sich.
-
 ---
 
 ## Konfiguration
@@ -123,9 +126,14 @@ API Keys werden im System-Keyring gespeichert (sicher, nicht im Klartext) — ni
 
 ```
 main.py                         Einstiegspunkt
-install_windows.bat             Quellcode-Setup für Windows
+install_windows.bat             Quellcode-Setup für Windows (Entwickler)
 install_linux.sh                Automatisches Setup für Linux
 requirements.txt                Python-Abhängigkeiten (pyautogui/pywin32 nur unter Windows)
+BlitztextEXE/
+  build_exe.bat                 baut dist\Blitztext\Blitztext.exe (Entwickler)
+  make_icon.py                  erzeugt Blitztext.ico aus dem Tray-Icon
+  Blitztext.spec                PyInstaller-Konfiguration
+  Blitztext.iss                 Inno-Setup-Skript für BlitztextSetup-x.y.z.exe
 blitztext/
   workflow.py                   Kernlogik aller 4 Workflows
   services/
@@ -135,7 +143,7 @@ blitztext/
     llm.py                      LLM-Anbieter (Groq/OpenAI/Claude/Ollama/custom)
     hotkeys.py                  Globale Hotkeys (pynput)
     paste.py                    Clipboard + Auto-Paste
-    autostart.py                Autostart (Windows: Registry, Linux: XDG-Autostart)
+    autostart.py                Autostart mit Windows (Registry-Eintrag, Windows)
   ui/
     tray.py                     System-Tray + Menü
     workflow_window.py          Aufnahme-UI mit Waveform
